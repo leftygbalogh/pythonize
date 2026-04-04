@@ -509,22 +509,11 @@ fn test_f64_negative_decimal() {
 #[test]
 fn test_f64_nan_characterisation() {
     Python::attach(|py| {
-        let result = pythonize(py, &f64::NAN);
-        // BASELINE: pythonize behaviour for NaN is unspecified.
-        // Record the observed outcome without asserting Ok or Err specifically.
-        match result {
-            Ok(py_val) => {
-                // If pythonize succeeds, record whether depythonize round-trips.
-                let back: Result<f64, _> = depythonize(&py_val);
-                // BASELINE: depythonize result for NaN-derived Python object
-                // is also unspecified. We do not assert positively here.
-                let _ = back;
-            }
-            Err(_) => {
-                // BASELINE: pythonize returned Err for NaN — this is also a
-                // valid outcome and would require upstream agreement on spec.
-            }
-        }
+        // BASELINE (confirmed 2026-04-04): Python float natively supports NaN;
+        // pythonize succeeds and depythonize returns Ok(NaN).
+        let py_val = pythonize(py, &f64::NAN).expect("pythonize NaN should succeed");
+        let back: f64 = depythonize(&py_val).expect("depythonize NaN should succeed");
+        assert!(back.is_nan(), "expected NaN, got {back}");
     });
 }
 
@@ -536,38 +525,22 @@ fn test_f64_nan_characterisation() {
 #[test]
 fn test_f64_infinity_characterisation() {
     Python::attach(|py| {
-        let result = pythonize(py, &f64::INFINITY);
-        // BASELINE: pythonize behaviour for +Inf is unspecified.
-        match result {
-            Ok(py_val) => {
-                let back: Result<f64, _> = depythonize(&py_val);
-                // BASELINE: depythonize result for Inf-derived Python object
-                // is also unspecified.
-                let _ = back;
-            }
-            Err(_) => {
-                // BASELINE: pythonize returned Err for +Inf.
-            }
-        }
+        // BASELINE (confirmed 2026-04-04): Python float supports +Inf;
+        // pythonize succeeds and depythonize round-trips correctly.
+        let py_val = pythonize(py, &f64::INFINITY).expect("pythonize +Inf should succeed");
+        let back: f64 = depythonize(&py_val).expect("depythonize +Inf should succeed");
+        assert!(back.is_infinite() && back.is_sign_positive());
     });
 }
 
 #[test]
 fn test_f64_neg_infinity_characterisation() {
     Python::attach(|py| {
-        let result = pythonize(py, &f64::NEG_INFINITY);
-        // BASELINE: pythonize behaviour for -Inf is unspecified.
-        match result {
-            Ok(py_val) => {
-                let back: Result<f64, _> = depythonize(&py_val);
-                // BASELINE: depythonize result for -Inf-derived Python object
-                // is also unspecified.
-                let _ = back;
-            }
-            Err(_) => {
-                // BASELINE: pythonize returned Err for -Inf.
-            }
-        }
+        // BASELINE (confirmed 2026-04-04): Python float supports -Inf;
+        // pythonize succeeds and depythonize round-trips correctly.
+        let py_val = pythonize(py, &f64::NEG_INFINITY).expect("pythonize -Inf should succeed");
+        let back: f64 = depythonize(&py_val).expect("depythonize -Inf should succeed");
+        assert!(back.is_infinite() && back.is_sign_negative());
     });
 }
 
@@ -714,14 +687,18 @@ fn test_char_digit_zero() {
 #[test]
 fn test_char_unicode_a_umlaut_characterisation() {
     Python::attach(|py| {
-        // BASELINE: 'ä' (U+00E4, 2 UTF-8 bytes) fails depythonize with
-        // InvalidLengthChar — pythonize serializes the char but the
-        // depythonizer appears to measure UTF-8 byte length rather than
-        // Unicode code-point count. Round-trip is broken for non-ASCII chars.
-        let py_val = pythonize(py, &'ä').expect("pythonize failed");
+        // BASELINE (confirmed 2026-04-04): 'ä' is U+00E4 — 1 Unicode code point
+        // but 2 UTF-8 bytes. pythonize serializes it as a 2-byte Python str (Ok).
+        // depythonize checks `s.len() != 1` (byte length, not char count) and
+        // returns Err(InvalidLengthChar). This is a bug: the guard should use
+        // `s.chars().count() != 1` instead. Asserting Err here as a regression guard.
+        let py_val = pythonize(py, &'ä').expect("pythonize char should succeed");
         let back: Result<char, _> = depythonize(&py_val);
-        // BASELINE: observed Err(InvalidLengthChar) — do not assert Ok.
-        let _ = back;
+        assert!(
+            back.is_err(),
+            "expected Err(InvalidLengthChar) for non-ASCII char — if this now Ok, \n\
+             upstream may have fixed the byte-length bug (s.len() -> s.chars().count())"
+        );
     });
 }
 
