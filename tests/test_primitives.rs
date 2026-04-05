@@ -636,10 +636,7 @@ fn test_string_empty() {
 #[test]
 fn test_string_hello() {
     Python::attach(|py| {
-        assert_eq!(
-            round_trip(py, String::from("hello")),
-            String::from("hello"),
-        );
+        assert_eq!(round_trip(py, String::from("hello")), String::from("hello"),);
     });
 }
 
